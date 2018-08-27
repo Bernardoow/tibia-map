@@ -30,9 +30,8 @@
 		var s = '000' + String(number);
 		return s.substr(s.length - size);
 	};
-	var setUrlPosition = function(coords, markers, forceHash) {
-		var markers_str = "&markers=" + JSON.stringify(markers);
-		var url = '#' + coords.x + ',' + coords.y + ',' + coords.floor + ':' + coords.zoom + markers_str;
+	var setUrlPosition = function(coords, forceHash) {
+		var url = '#' + coords.x + ',' + coords.y + ',' + coords.floor + ':' + coords.zoom;
 		if (
 			forceHash &&
 			location.hash != url
@@ -69,28 +68,28 @@
 	};
 	TibiaMap.prototype.getUrlPosition = getUrlPosition;
 	var createCustomIcons = function(){
-		var symbols = [
-			{id:'0x00', file: 'green_tick.png'},
-			{id:'0x07', file: 'spear.png'},
-			{id:'0x01', file: 'blue_question_mark.png'},
-			{id:'0x08', file: 'sword.png'},
-			{id:'0x02', file: 'red_exclamation_mark.png'},
-			{id:'0x09', file: 'blue_flag.png'},
-			{id:'0x03', file: 'orange_star.png'},
-			{id:'0x0A', file: 'golden_lock.png'},
-			{id:'0x04', file: 'red_cross.png'},
-			{id:'0x0B', file: 'brown_bag.png'},
-			{id:'0x05', file: 'brown_plus.png'},
-			{id:'0x0C', file: 'white_skull.png'},
-			{id:'0x06', file: 'lips.png'},
-			{id:'0x0D', file: 'green_dollar_sign.png'},
-			{id:'0x0E', file: 'red_arrow_up.png'},
-			{id:'0x0F', file: 'red_arrow_down.png'},
-			{id:'0x10', file: 'red_arrow_right.png'},
-			{id:'0x11', file: 'red_arrow_left.png'},
-			{id:'0x12', file: 'green_arrow_up.png'},
-			{id:'0x13', file: 'green_arrow_down.png'}
-		];
+        var symbols = [
+            {id:'checkmark', file: 'green_tick.png'},
+            {id:'spear', file: 'spear.png'},
+            {id:'?', file: 'blue_question_mark.png'},
+            {id:'sword', file: 'sword.png'},
+            {id:'!', file: 'red_exclamation_mark.png'},
+            {id:'flag', file: 'blue_flag.png'},
+            {id:'star', file: 'orange_star.png'},
+            {id:'lock', file: 'golden_lock.png'},
+            {id:'crossmark', file: 'red_cross.png'},
+            {id:'bag', file: 'brown_bag.png'},
+            {id:'cross', file: 'brown_plus.png'},
+            {id:'skull', file: 'white_skull.png'},
+            {id:'mouth', file: 'lips.png'},
+            {id:'$', file: 'green_dollar_sign.png'},
+            {id:'red up', file: 'red_arrow_up.png'},
+            {id:'red down', file: 'red_arrow_down.png'},
+            {id:'red right', file: 'red_arrow_right.png'},
+            {id:'red left', file: 'red_arrow_left.png'},
+            {id:'up', file: 'green_arrow_up.png'},
+            {id:'down', file: 'green_arrow_down.png'}
+        ];
 		var icons = {};
 
 		var CustomIcon = L.Icon.extend({
@@ -106,18 +105,32 @@
 		return icons;
 	}
 
-	var getUrlMarkers = function(){
-		_MARKERS = 1;
-		var parts = window.location.hash.slice(1).split('&markers=');
-
-		if(parts[_MARKERS]){
-			try{
-				return JSON.parse(parts[_MARKERS]);
-			}catch(e){console.log('Error in your marker. Check it!'+e.message);};
+	var getJSONMarkers = function(floor){
+		if(floor === undefined) {
+			return [];
 		}
-		return [];
+
+		get_markers = function httpGet(theUrl)
+		{
+		    var xmlHttp = new XMLHttpRequest();
+		    xmlHttp.open( "GET", theUrl, false );
+		    xmlHttp.send();
+		    if (xmlHttp.status === 200){
+		    	return JSON.parse(xmlHttp.response);
+		    }
+		    return [];
+		};
+
+		if (floor < 10){
+			floor = "0" + floor.toString();
+		}
+
+		var url = "https://raw.githubusercontent.com/tibiamaps/tibia-map-data/master/data/floor-{}-markers.json".replace("{}", floor);
+
+		return get_markers(url);
 	};
-	TibiaMap.prototype.getUrlMarkers = getUrlMarkers;
+
+	TibiaMap.prototype.getJSONMarkers = getJSONMarkers;
 
 	var modifyLeaflet = function() {
 		L.CRS.CustomZoom = L.extend({}, L.CRS.Simple, {
@@ -167,7 +180,7 @@
 		mapLayer._setZoomTransform = function(level, center, zoom) {
 			var coords = getUrlPosition();
 			coords.zoom = zoom;
-			setUrlPosition(coords, getUrlMarkers(), true);
+			setUrlPosition(coords, true);
 			var scale = this._map.getZoomScale(zoom, level.zoom);
 			var translate = level.origin.multiplyBy(scale).subtract(
 				this._map._getNewPixelOrigin(center, zoom)
@@ -225,37 +238,29 @@
 	};
 	TibiaMap.prototype._createMapFloorMakers = function(floor){
 		var this_ = this;
-		var _X = 0;
-		var _Y = 1;
-		var _FLOOR = 2;
-		var _ICON = 3;
-		var _TITLE = 4;
 		var _ZOOM = 0;
 
 		function isSameFloor(marker) {
-			return marker[_FLOOR] === floor;
+			return marker.z === floor;
 		}
 
 		function isValidate(marker){
-			return marker[_X] && marker[_Y] && marker[_FLOOR];
+			return marker.x && marker.y && marker.z;
 		}
 
 		function createMarker(marker){
-			var title = ''
-			if(marker[_TITLE])
-				title = marker[_TITLE];
 
-			var custom_icon = "0x00";
-			if(marker[_ICON] && marker[_ICON] in this_.custom_icons)
-				custom_icon = marker[_ICON];
+			var options = {'title': marker.description};
+			if(marker.icon && marker.icon in this_.custom_icons)
+				options.icon = this_.custom_icons[marker.icon];
 
 			var marker = L.marker(
-				this_.map.unproject([marker[_X], marker[_Y]], _ZOOM), {icon:this_.custom_icons[custom_icon], 'title':title}
+				this_.map.unproject([marker.x, marker.y], _ZOOM), options
 			);
 			this_.layer_marker.addLayer(marker);
 		}
 
-		var markers = this.markers = getUrlMarkers();
+		var markers = this.markers = getJSONMarkers(floor);
 
 		if(this.layer_marker !== null){
 			this.map.removeLayer(this.layer_marker);
@@ -348,7 +353,6 @@
 				'floor': _this.floor,
 				'zoom': zoom
 			},
-			_this.markers,
 			true);
 		});
 		L.crosshairs().addTo(map);
